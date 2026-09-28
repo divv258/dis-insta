@@ -73,18 +73,21 @@ async function checkSession() {
 function loginWithInstagram() {
   const btn = document.getElementById('ig-login-btn');
   btn.disabled = true;
-  btn.innerHTML = `
-    <div class="btn-spinner-inline"></div>
-    <span>Redirecting to Instagram…</span>
-  `;
-
-  // Show connecting overlay
+  btn.innerHTML = `<div class="btn-spinner-inline"></div><span>Redirecting to Instagram…</span>`;
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('connecting-overlay').classList.remove('hidden');
   document.getElementById('connecting-overlay').classList.add('active');
-
-  // Redirect to our backend which sends user to Instagram's auth page
   setTimeout(() => { window.location.href = '/auth/instagram'; }, 600);
+}
+
+function devLogin() {
+  const btn = document.getElementById('dev-login-btn');
+  btn.disabled = true;
+  btn.textContent = '⚡ Connecting…';
+  document.getElementById('login-screen').classList.remove('active');
+  document.getElementById('connecting-overlay').classList.remove('hidden');
+  document.getElementById('connecting-overlay').classList.add('active');
+  setTimeout(() => { window.location.href = '/auth/dev-login'; }, 400);
 }
 
 /* ============================================================
@@ -127,44 +130,48 @@ async function loadConversations() {
     const data = await res.json();
 
     if (data.data && data.data.length > 0) {
-      // Real Instagram conversations
-      STATE.conversations = data.data.map(conv => ({
-        id:       conv.id,
-        with:     extractParticipant(conv.participants, STATE.user.id),
-        messages: (conv.messages?.data || []).map(m => ({
-          id:   m.id,
-          from: m.from?.id === STATE.user.id ? 'me' : 'them',
-          text: m.message,
-          time: new Date(m.created_time).getTime()
-        })).reverse(),
-        unread:   0,
-        lastTime: new Date(conv.updated_time).getTime()
-      }));
+      STATE.conversations = data.data.map(conv => {
+        const rawMsgs = Array.isArray(conv.messages) ? conv.messages : (conv.messages?.data || []);
+        return {
+          id:       conv.id,
+          with:     extractParticipant(conv.participants, STATE.user?.id),
+          messages: rawMsgs.map(m => {
+            const isMe = (m.from?.id === STATE.user?.id) || (m.from === STATE.user?.id) || (m.from === 'me');
+            return {
+              id:   m.id || ('m_' + Date.now()),
+              from: isMe ? 'me' : 'them',
+              text: m.message || m.text || '',
+              time: new Date(m.created_time || m.time || Date.now()).getTime()
+            };
+          }),
+          unread:   0,
+          lastTime: new Date(conv.updated_time || Date.now()).getTime()
+        };
+      });
     } else {
-      // Fallback: show demo data if API not available yet
-      STATE.conversations = buildDemoConversations();
-      if (data.error) {
-        showToast('⚠️ Using demo data — Instagram Business API needed for real DMs');
-      }
+      // Real Instagram user has no active chats yet
+      STATE.conversations = [];
     }
 
     document.getElementById('stat-messages').textContent = STATE.conversations.length;
     renderDMList();
   } catch (err) {
     console.error('Failed to load conversations:', err);
-    STATE.conversations = buildDemoConversations();
+    STATE.conversations = [];
     renderDMList();
   }
 }
 
 function extractParticipant(participants, myId) {
-  if (!participants?.data) return { name: 'Unknown', handle: 'unknown', avatar: '', online: false };
-  const other = participants.data.find(p => p.id !== myId) || participants.data[0];
+  const list = Array.isArray(participants) ? participants : (participants?.data || []);
+  if (!list.length) return { id: 'user', name: 'Instagram User', handle: 'user', avatar: '', online: false };
+  const other = list.find(p => p.id !== myId && p.username !== STATE.user?.handle) || list[0];
+  const uname = other.username || other.name || other.id;
   return {
-    id:     other.id,
-    name:   other.name || other.username || 'Instagram User',
-    handle: other.username || other.id,
-    avatar: other.profile_picture || `https://i.pravatar.cc/150?u=${other.id}`,
+    id:     other.id || uname,
+    name:   other.name || ('@' + uname),
+    handle: uname,
+    avatar: other.profile_pic || other.profile_picture || `https://unavatar.io/instagram/${uname}`,
     online: false
   };
 }
@@ -331,23 +338,23 @@ async function sendMessage() {
     const res = await fetch('/api/send', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ recipient_id: conv.with?.id, message: text })
+      body:    JSON.stringify({
+        conversationId: conv.id,
+        recipient_id:   conv.with?.id || conv.with?.handle,
+        message:        text
+      })
     });
-    if (!res.ok) {
-      const err = await res.json();
-      // If demo mode, simulate reply
-      if (err.error?.includes('demo') || !conv.with?.id?.match(/^\d+$/)) {
-        simulateDemoReply(conv);
-      }
+    const result = await res.json();
+    if (result.dev_note) {
+      showToast(result.dev_note);
     }
-  } catch {
-    // Demo mode: simulate reply
-    simulateDemoReply(conv);
+  } catch (err) {
+    console.error('Send error:', err);
   }
 }
 
 /* ============================================================
-   POLLING — Check for new messages every 10s
+   POLLING — Check for new messages every 5s
    ============================================================ */
 function startPolling() {
   STATE.pollingTimer = setInterval(async () => {
@@ -358,12 +365,16 @@ function startPolling() {
         // Merge new messages
         data.data.forEach(serverConv => {
           const local = STATE.conversations.find(c => c.id === serverConv.id);
-          const newMsgs = (serverConv.messages?.data || []).map(m => ({
-            id:   m.id,
-            from: m.from?.id === STATE.user.id ? 'me' : 'them',
-            text: m.message,
-            time: new Date(m.created_time).getTime()
-          })).reverse();
+          const rawMsgs = Array.isArray(serverConv.messages) ? serverConv.messages : (serverConv.messages?.data || []);
+          const newMsgs = rawMsgs.map(m => {
+            const isMe = (m.from?.id === STATE.user?.id) || (m.from === STATE.user?.id) || (m.from === 'me');
+            return {
+              id:   m.id || ('m_' + Date.now()),
+              from: isMe ? 'me' : 'them',
+              text: m.message || m.text || '',
+              time: new Date(m.created_time || m.time || Date.now()).getTime()
+            };
+          });
 
           if (local) {
             const existingIds = new Set(local.messages.map(m => m.id));
@@ -378,27 +389,21 @@ function startPolling() {
                 if (STATE.settings.sounds) playNotifSound();
               }
             }
+          } else {
+            // New conversation arrived
+            STATE.conversations.unshift({
+              id:       serverConv.id,
+              with:     extractParticipant(serverConv.participants, STATE.user?.id),
+              messages: newMsgs,
+              unread:   newMsgs.length,
+              lastTime: new Date(serverConv.updated_time || Date.now()).getTime()
+            });
           }
         });
         renderDMList();
       }
     } catch { /* network error, skip */ }
-  }, 10000);
-}
-
-/* ============================================================
-   DEMO REPLY SIMULATION
-   ============================================================ */
-const REPLIES = ['That sounds amazing! 🤩','haha yes exactly 😂','No way!! 😱','omg yes please 🙏','lol okay fine 😭','you\'re so right!','miss you!! 🥺','wait what really?? 😮','🔥🔥🔥','absolutely!! 💯'];
-function simulateDemoReply(conv) {
-  setTimeout(() => {
-    const msg = { id: 'r_' + Date.now(), from: 'them', text: REPLIES[Math.floor(Math.random()*REPLIES.length)], time: Date.now() };
-    conv.messages.push(msg);
-    conv.lastTime = msg.time;
-    if (STATE.activeConvId === conv.id) renderMessages(conv);
-    else { conv.unread++; if (STATE.settings.sounds) playNotifSound(); }
-    renderDMList();
-  }, 1500 + Math.random() * 2500);
+  }, 5000);
 }
 
 /* ============================================================
@@ -408,18 +413,72 @@ function toggleEmoji() { document.getElementById('emoji-bar').classList.toggle('
 function insertEmoji(e) { const i = document.getElementById('chat-input'); i.value += e; i.focus(); }
 
 /* ============================================================
-   NEW MESSAGE MODAL
+   NEW MESSAGE MODAL & DIRECT FRIEND CHAT
    ============================================================ */
 function openNewMessage() {
   document.getElementById('new-msg-modal').classList.remove('hidden');
+  const input = document.getElementById('friend-username-input');
+  if (input) {
+    input.value = '';
+    setTimeout(() => input.focus(), 250);
+  }
   const all = STATE.conversations.map(c => c.with).filter(Boolean);
   renderContactsList(all);
-  setTimeout(() => document.getElementById('contact-search').focus(), 300);
 }
+
 function closeNewMessage(e) {
   document.getElementById('new-msg-modal').classList.add('hidden');
-  document.getElementById('contact-search').value = '';
+  const input = document.getElementById('friend-username-input');
+  if (input) input.value = '';
 }
+
+async function handleStartChat(e) {
+  if (e) e.preventDefault();
+  const input = document.getElementById('friend-username-input');
+  const raw = input?.value.trim() || '';
+  const username = raw.replace(/^@/, '');
+  if (!username) return;
+
+  const btn = document.getElementById('btn-start-chat');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/conversations/new', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ username })
+    });
+    const result = await res.json();
+    if (result.data) {
+      const serverConv = result.data;
+      let conv = STATE.conversations.find(c => c.id === serverConv.id);
+      if (!conv) {
+        conv = {
+          id:       serverConv.id,
+          with:     extractParticipant(serverConv.participants, STATE.user?.id),
+          messages: (serverConv.messages || []).map(m => ({
+            id:   m.id,
+            from: (m.from?.id === STATE.user?.id || m.from === 'me') ? 'me' : 'them',
+            text: m.message || m.text || '',
+            time: new Date(m.created_time || Date.now()).getTime()
+          })),
+          unread:   0,
+          lastTime: new Date(serverConv.updated_time || Date.now()).getTime()
+        };
+        STATE.conversations.unshift(conv);
+      }
+      closeNewMessage();
+      renderDMList();
+      openChat(conv.id);
+    }
+  } catch (err) {
+    console.error('Failed to create chat:', err);
+    showToast('Failed to start chat with @' + username);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function renderContactsList(contacts) {
   const list = document.getElementById('contacts-list');
   list.innerHTML = '';
@@ -428,21 +487,20 @@ function renderContactsList(contacts) {
     item.className = 'contact-item';
     item.onclick = () => startConversation(c);
     item.innerHTML = `
-      <img class="contact-avatar" src="${c.avatar || ''}" alt="${c.name}" onerror="this.src='https://i.pravatar.cc/60?u=${c.id}'" />
+      <img class="contact-avatar" src="${c.avatar || ''}" alt="${c.name}" onerror="this.src='https://unavatar.io/instagram/${c.handle}'" />
       <div><p class="contact-name">${escHtml(c.name)}</p><p class="contact-handle">@${escHtml(c.handle)}</p></div>`;
     list.appendChild(item);
   });
-  if (!contacts.length) list.innerHTML = '<p style="color:var(--text-3);font-size:14px;padding:16px;text-align:center;">No contacts found</p>';
+  if (!contacts.length) {
+    list.innerHTML = '<p style="color:var(--text-3);font-size:13px;padding:12px;text-align:center;">No recent contacts yet. Enter any @handle above to start!</p>';
+  }
 }
-function filterContacts(q) {
-  const all = STATE.conversations.map(c => c.with).filter(Boolean);
-  renderContactsList(q ? all.filter(c => c.name?.toLowerCase().includes(q.toLowerCase()) || c.handle?.toLowerCase().includes(q.toLowerCase())) : all);
-}
+
 function startConversation(contact) {
   closeNewMessage();
-  let conv = STATE.conversations.find(c => c.with?.id === contact.id);
+  let conv = STATE.conversations.find(c => c.with?.id === contact.id || c.with?.handle === contact.handle);
   if (!conv) {
-    conv = { id:'c_'+Date.now(), with:contact, messages:[], unread:0, lastTime:Date.now() };
+    conv = { id:'conv_'+contact.handle+'_'+Date.now(), with:contact, messages:[], unread:0, lastTime:Date.now() };
     STATE.conversations.unshift(conv);
   }
   renderDMList();

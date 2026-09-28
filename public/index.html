@@ -48,6 +48,10 @@
           <span>Continue with Instagram</span>
         </button>
 
+        <button class="btn-dev-login" id="dev-login-btn" onclick="devLogin()">
+          ⚡ Quick Login (Dev Mode)
+        </button>
+
         <div class="login-divider"><span>how it works</span></div>
 
         <div class="how-it-works">
@@ -321,11 +325,46 @@
   <div id="new-msg-modal" class="modal-overlay hidden" onclick="closeNewMessage(event)">
     <div class="modal-sheet" onclick="event.stopPropagation()">
       <div class="modal-handle"></div>
-      <h3 class="modal-title">New Message</h3>
-      <div class="modal-search-wrap">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input type="text" id="contact-search" placeholder="Search contacts…" oninput="filterContacts(this.value)" />
+      <div class="modal-header-row">
+        <h3 class="modal-title">New Message</h3>
+        <button class="modal-close-btn" onclick="closeNewMessage()">✕</button>
       </div>
+
+      <!-- Direct Username Input Bar -->
+      <form class="new-chat-form" onsubmit="handleStartChat(event)">
+        <div class="new-chat-input-wrap">
+          <span class="at-prefix">@</span>
+          <input
+            type="text"
+            id="friend-username-input"
+            placeholder="friend_instagram_handle"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+          />
+        </div>
+        <button type="submit" class="btn-start-chat" id="btn-start-chat">
+          <span>Chat</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </form>
+
+      <!-- Dev Mode Tester Tip Banner -->
+      <div class="tester-info-card">
+        <div class="tester-info-header">
+          <span class="tester-badge">⚡ Meta Dev Mode</span>
+          <a href="https://developers.facebook.com/apps/2607844902963089/roles/" target="_blank" class="tester-link">Open Roles ↗</a>
+        </div>
+        <p class="tester-info-text">
+          To deliver messages directly into your friend's real Instagram app, add their handle under <strong>App Roles → Roles → Instagram Testers</strong> in Meta Console.
+        </p>
+      </div>
+
+      <div class="modal-section-title">Recent / Contacts</div>
       <div class="contacts-list" id="contacts-list"></div>
     </div>
   </div>

@@ -17,6 +17,7 @@ const axios          = require('axios');
 const cors           = require('cors');
 const path           = require('path');
 const crypto         = require('crypto');
+const fs             = require('fs');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,8 @@ const IG_APP_ID      = process.env.IG_APP_ID      || '';
 const IG_APP_SECRET  = process.env.IG_APP_SECRET  || '';
 const REDIRECT_URI   = process.env.REDIRECT_URI   || `http://localhost:${PORT}/auth/callback`;
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const DEV_TOKEN      = process.env.INSTAGRAM_ACCESS_TOKEN || '';
+const DEV_USER_ID    = process.env.INSTAGRAM_USER_ID      || '';
 
 // ─── Middleware ─────────────────────────────────────────────
 app.use(cors({ origin: true, credentials: true }));
@@ -42,6 +45,52 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Routes ─────────────────────────────────────────────────
+
+/**
+ * GET /auth/dev-login
+ * DEV ONLY: Auto-login using the token from .env
+ * Fetches real profile from Instagram API using the stored token
+ */
+app.get('/auth/dev-login', async (req, res) => {
+  if (!DEV_TOKEN || !DEV_USER_ID) {
+    return res.redirect('/?error=no_dev_token');
+  }
+  try {
+    const profileRes = await axios.get(`https://graph.instagram.com/v21.0/${DEV_USER_ID}`, {
+      params: {
+        fields:       'id,name,username,profile_picture_url,biography,followers_count,follows_count',
+        access_token: DEV_TOKEN
+      }
+    });
+    const p = profileRes.data;
+    req.session.user = {
+      id:          p.id,
+      name:        p.name || p.username,
+      handle:      p.username,
+      avatar:      p.profile_picture_url || '',
+      bio:         p.biography || '',
+      followers:   p.followers_count || 0,
+      following:   p.follows_count   || 0,
+      accessToken: DEV_TOKEN
+    };
+    console.log(`✅ Dev login: @${p.username}`);
+    res.redirect('/?auth=success');
+  } catch (err) {
+    console.error('Dev login error:', err.response?.data || err.message);
+    // Fallback: create session from env vars even if profile fetch fails
+    req.session.user = {
+      id:          DEV_USER_ID,
+      name:        'Divyanshu',
+      handle:      'divyansh.27_',
+      avatar:      '',
+      bio:         'Using Pingo 💬',
+      followers:   0,
+      following:   0,
+      accessToken: DEV_TOKEN
+    };
+    res.redirect('/?auth=success');
+  }
+});
 
 /**
  * GET /auth/instagram
@@ -163,95 +212,232 @@ app.get('/api/me', (req, res) => {
   res.json(safeUser);
 });
 
+// ─── Data Persistence ──────────────────────────────────────────
+const DATA_DIR  = path.join(__dirname, 'data');
+const CONV_FILE = path.join(DATA_DIR, 'conversations.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(CONV_FILE)) {
+    fs.writeFileSync(CONV_FILE, JSON.stringify([]), 'utf-8');
+  }
+}
+
+function getSavedConversations() {
+  ensureDataDir();
+  try {
+    const raw = fs.readFileSync(CONV_FILE, 'utf-8');
+    return JSON.parse(raw) || [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveConversations(convs) {
+  ensureDataDir();
+  fs.writeFileSync(CONV_FILE, JSON.stringify(convs, null, 2), 'utf-8');
+}
+
 /**
  * GET /api/conversations
- * Fetch user's Instagram DM conversations
- * Uses Instagram Business Messaging API
+ * Fetch user conversations (combines Instagram API and user-created threads)
  */
 app.get('/api/conversations', async (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
 
-  try {
-    const { accessToken, id } = req.session.user;
+  const { accessToken, id } = req.session.user;
+  const localConvs = getSavedConversations();
 
+  let igConvs = [];
+  try {
+    // Attempt to query real Instagram Graph API conversations
     const response = await axios.get(
       `https://graph.instagram.com/v21.0/${id}/conversations`,
       {
         params: {
-          fields:       'id,updated_time,participants,messages{id,message,from,created_time}',
+          platform:     'instagram',
+          fields:       'id,updated_time,participants{id,username,name,profile_pic},messages{id,message,from,created_time}',
           access_token: accessToken
-        }
+        },
+        timeout: 5000
       }
     );
 
-    res.json(response.data);
+    igConvs = (response.data.data || []).map(conv => ({
+      id:           conv.id,
+      updated_time: conv.updated_time,
+      participants: conv.participants?.data || [],
+      messages:     (conv.messages?.data || []).reverse()
+    }));
   } catch (err) {
-    console.error('Conversations error:', err.response?.data || err.message);
-    // Return mock data in development if API not available
-    res.json({ data: [], error: err.response?.data?.error?.message });
+    console.log('IG API convs notice:', err.response?.data?.error?.message || err.message);
   }
+
+  // Merge IG conversations into local ones
+  const combined = [...localConvs];
+  for (const ig of igConvs) {
+    const idx = combined.findIndex(c => c.id === ig.id);
+    if (idx >= 0) {
+      combined[idx] = ig;
+    } else {
+      combined.unshift(ig);
+    }
+  }
+
+  res.json({ data: combined });
+});
+
+/**
+ * POST /api/conversations/new
+ * Start a conversation with an Instagram friend by their username
+ */
+app.post('/api/conversations/new', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
+
+  let { username, name } = req.body;
+  if (!username) return res.status(400).json({ error: 'Instagram username is required' });
+
+  username = username.replace(/^@/, '').trim().toLowerCase();
+  const convs = getSavedConversations();
+
+  // Check if thread already exists with this username
+  let existing = convs.find(c =>
+    (c.participants || []).some(p => p.username?.toLowerCase() === username || p.id === username)
+  );
+
+  if (existing) {
+    return res.json({ data: existing });
+  }
+
+  const newConv = {
+    id:           'conv_' + username + '_' + Date.now(),
+    updated_time: new Date().toISOString(),
+    participants: [{
+      id:          username,
+      username:    username,
+      name:        name || username,
+      profile_pic: `https://unavatar.io/instagram/${username}`
+    }],
+    messages: []
+  };
+
+  convs.unshift(newConv);
+  saveConversations(convs);
+
+  console.log(`💬 Created new conversation with @${username}`);
+  res.json({ data: newConv });
 });
 
 /**
  * GET /api/messages/:conversationId
- * Fetch messages in a specific conversation
+ * Fetch messages for a specific conversation
  */
 app.get('/api/messages/:conversationId', async (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
 
+  const { conversationId } = req.params;
+  const convs = getSavedConversations();
+  const conv = convs.find(c => c.id === conversationId);
+
+  if (conv) {
+    return res.json({ data: conv.messages });
+  }
+
+  // If numeric IG conversation ID, query Graph API
   try {
     const { accessToken } = req.session.user;
-    const { conversationId } = req.params;
-
     const response = await axios.get(
       `https://graph.instagram.com/v21.0/${conversationId}`,
       {
         params: {
-          fields:       'id,messages{id,message,from,created_time,attachments}',
+          fields:       'id,messages{id,message,from,created_time}',
           access_token: accessToken
-        }
+        },
+        timeout: 5000
       }
     );
-
     res.json(response.data);
   } catch (err) {
-    console.error('Messages error:', err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.error?.message || 'Failed to fetch messages' });
+    res.status(404).json({ error: 'Conversation not found' });
   }
 });
 
 /**
  * POST /api/send
- * Send a message to a user
+ * Send an Instagram DM (persists in Dis·Insta and pushes to Instagram API)
  */
 app.post('/api/send', async (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
 
-  try {
-    const { accessToken, id } = req.session.user;
-    const { recipient_id, message } = req.body;
+  const { accessToken, id } = req.session.user;
+  const { conversationId, recipient_id, message } = req.body;
 
-    if (!recipient_id || !message) {
-      return res.status(400).json({ error: 'recipient_id and message are required' });
-    }
-
-    const response = await axios.post(
-      `https://graph.instagram.com/v21.0/${id}/messages`,
-      {
-        recipient: { id: recipient_id },
-        message:   { text: message }
-      },
-      {
-        params: { access_token: accessToken },
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
-
-    res.json({ success: true, message_id: response.data.message_id });
-  } catch (err) {
-    console.error('Send error:', err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.error?.message || 'Failed to send message' });
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'Message text is required' });
   }
+
+  const newMsg = {
+    id:           'msg_' + Date.now(),
+    message:      message.trim(),
+    from:         { id: id },
+    created_time: new Date().toISOString()
+  };
+
+  // 1. Persist to local conversation store
+  const convs = getSavedConversations();
+  let conv = convs.find(c =>
+    c.id === conversationId ||
+    (c.participants || []).some(p => p.id === recipient_id || p.username === recipient_id)
+  );
+
+  if (conv) {
+    conv.messages = conv.messages || [];
+    conv.messages.push(newMsg);
+    conv.updated_time = new Date().toISOString();
+    saveConversations(convs);
+  }
+
+  // 2. If recipient is a numeric IGSID, send via Meta Graph API
+  const isNumeric = recipient_id && /^\d+$/.test(recipient_id);
+
+  if (isNumeric) {
+    try {
+      const response = await axios.post(
+        `https://graph.instagram.com/v21.0/${id}/messages`,
+        {
+          recipient: { id: recipient_id },
+          message:   { text: message.trim() }
+        },
+        {
+          params:  { access_token: accessToken },
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 6000
+        }
+      );
+      console.log(`✉️  Sent message to ${recipient_id} via Instagram API`);
+      return res.json({ success: true, delivered: true, message: newMsg, message_id: response.data?.message_id });
+    } catch (err) {
+      const igErr = err.response?.data?.error;
+      console.log('IG API direct delivery notice:', igErr?.message || err.message);
+      return res.json({
+        success: true,
+        delivered: false,
+        message: newMsg,
+        dev_note: 'Message saved in Dis·Insta. In Meta Dev Mode, add your friend as an Instagram Tester in Meta Developer Console to enable live DM push.'
+      });
+    }
+  }
+
+  // Recipient was given by @handle
+  console.log(`✉️  Saved message for @${recipient_id}:`, message.substring(0, 30));
+  res.json({
+    success: true,
+    delivered: false,
+    message: newMsg,
+    dev_note: `Message saved in Dis·Insta. In Meta Dev Mode, add @${recipient_id} as an Instagram Tester in Meta Developer Console to enable live DM push.`
+  });
 });
 
 /**
