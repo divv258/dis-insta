@@ -1119,3 +1119,23 @@ html, body {
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 100px; }
+
+/* Legal Links */
+.login-legal-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.login-legal-links a {
+  color: var(--text-2);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+.login-legal-links a:hover {
+  color: var(--text-1);
+  text-decoration: underline;
+}

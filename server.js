@@ -449,6 +449,19 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// ─── Legal & Compliance Pages (Required for Meta App Review) ─
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+});
+
+app.get('/terms', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'terms.html'));
+});
+
+app.get('/data-deletion', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'data-deletion.html'));
+});
+
 // Catch-all → serve frontend (Express 5 compatible wildcard)
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

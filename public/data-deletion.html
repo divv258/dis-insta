@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Data Deletion Instructions — Dis·Insta</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --border: #262626;
+      --text: #ffffff;
+      --text-muted: #a3a3a3;
+      --accent: #e1306c;
+      --accent-grad: linear-gradient(135deg, #833ab4, #e1306c, #fd1d1d);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 32px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-badge {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: var(--accent-grad);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 20px;
+    }
+    h1 { font-size: 26px; font-weight: 700; }
+    .updated { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+    h2 { font-size: 18px; margin-top: 28px; margin-bottom: 12px; color: #fff; }
+    p, li { color: var(--text-muted); font-size: 14.5px; margin-bottom: 12px; }
+    ol { padding-left: 20px; margin-bottom: 16px; }
+    .step-box {
+      background: #1c1c1c;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .nav-links { margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-badge">D</div>
+      <div>
+        <h1>User Data Deletion Instructions</h1>
+        <p style="margin: 0; font-size: 14px; color: var(--text-muted);">Dis·Insta Application</p>
+      </div>
+    </div>
+    <p class="updated">Last updated: September 2026</p>
+
+    <p>In accordance with Meta Platform Rules, Dis·Insta provides clear, automated, and manual options for users to request the permanent deletion of their account data.</p>
+
+    <h2>Method 1: Instant In-App Data Disconnect</h2>
+    <div class="step-box">
+      <p style="color:#fff; font-weight:600; margin-bottom:8px;">Instant Session & Data Clearing:</p>
+      <ol>
+        <li>Open Dis·Insta and switch to your <strong>Profile</strong> tab.</li>
+        <li>Scroll down to the <strong>Settings</strong> section.</li>
+        <li>Tap <strong>Disconnect Account</strong>.</li>
+      </ol>
+      <p style="margin:0;">This immediately destroys your authentication tokens, cleans active sessions, and wipes temporary message caches from our servers.</p>
+    </div>
+
+    <h2>Method 2: Revoke Access via Instagram (Meta)</h2>
+    <div class="step-box">
+      <p style="color:#fff; font-weight:600; margin-bottom:8px;">Revoke App Access through Instagram:</p>
+      <ol>
+        <li>Open your Instagram Mobile App or visit <a href="https://www.instagram.com/accounts/manage_access/" target="_blank">Instagram Manage Access</a>.</li>
+        <li>Go to <strong>Settings and privacy</strong> → <strong>Website permissions</strong> (or <strong>Apps and Websites</strong>).</li>
+        <li>Find <strong>Dis·Insta</strong> in the Active list and tap <strong>Remove</strong>.</li>
+      </ol>
+      <p style="margin:0;">Once removed, Meta automatically invalidates all access tokens, cutting off all future API communication.</p>
+    </div>
+
+    <h2>Method 3: Direct Data Deletion Request (Support)</h2>
+    <p>If you would like our team to manually purge any lingering identifiers, backup logs, or records associated with your Instagram User ID, please send an email with your Instagram handle to:</p>
+    <p><strong>Email:</strong> <a href="mailto:support@dis-insta.app?subject=Data%20Deletion%20Request">support@dis-insta.app</a><br />
+    <strong>Subject:</strong> Data Deletion Request — [Your Instagram Handle]</p>
+    <p>Requests are processed within 48 hours, and a confirmation email will be returned once all records are purged.</p>
+
+    <div class="nav-links">
+      <a href="/">← Return to App</a> &nbsp;|&nbsp;
+      <a href="/privacy">Privacy Policy</a> &nbsp;|&nbsp;
+      <a href="/terms">Terms of Service</a>
+    </div>
+  </div>
+</body>
+</html>
