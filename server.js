@@ -263,8 +263,8 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// Catch-all → serve frontend
-app.get('*', (req, res) => {
+// Catch-all → serve frontend (Express 5 compatible wildcard)
+app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
